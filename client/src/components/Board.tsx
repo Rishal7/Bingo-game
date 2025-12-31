@@ -29,11 +29,11 @@ export function Board({
     }
     // Index 10: Diagonal (TL-BR)
     if (index === 10) {
-      return { x1: "2%", y1: "2%", x2: "98%", y2: "98%" };
+      return { x1: "3%", y1: "3%", x2: "97%", y2: "97%" };
     }
     // Index 11: Diagonal (TR-BL)
     if (index === 11) {
-      return { x1: "98%", y1: "2%", x2: "2%", y2: "98%" };
+      return { x1: "97%", y1: "3%", x2: "3%", y2: "97%" };
     }
     return null;
   };

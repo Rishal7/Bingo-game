@@ -9,9 +9,17 @@ interface GameOverProps {
   result: "win" | "lose";
   onRestart: () => void;
   leaderboard?: { name: string; score: number }[];
+  onViewBoard?: () => void;
+  isViewingOpponent?: boolean;
 }
 
-export function GameOver({ result, onRestart, leaderboard }: GameOverProps) {
+export function GameOver({
+  result,
+  onRestart,
+  leaderboard,
+  onViewBoard,
+  isViewingOpponent,
+}: GameOverProps) {
   const { width, height } = useWindowSize();
   const [showConfetti, setShowConfetti] = useState(true);
 
@@ -23,6 +31,19 @@ export function GameOver({ result, onRestart, leaderboard }: GameOverProps) {
       return () => clearTimeout(timer);
     }
   }, [result]);
+
+  if (isViewingOpponent && onViewBoard) {
+    return (
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+        <button
+          onClick={onViewBoard}
+          className="bg-pale-primary text-white px-6 py-3 rounded-full font-bold shadow-xl hover:scale-105 active:scale-95 transition-all text-sm sm:text-base whitespace-nowrap"
+        >
+          Show Results / Play Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -93,6 +114,15 @@ export function GameOver({ result, onRestart, leaderboard }: GameOverProps) {
         >
           Play Again
         </SoundButton>
+
+        {onViewBoard && (
+          <button
+            onClick={onViewBoard}
+            className="w-full mt-3 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold text-lg hover:bg-gray-200 transition-all"
+          >
+            View Opponent Board
+          </button>
+        )}
       </motion.div>
     </div>
   );

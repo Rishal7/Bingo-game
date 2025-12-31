@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useSearch, useNavigate } from "@tanstack/react-router";
 import { Board } from "../components/Board";
 import { useGameLogic, WINNING_LINES } from "../hooks/useGameLogic";
@@ -39,8 +39,23 @@ export function GameRoom() {
   // Turn logic: In PVE, always me. In PvP, managed by effect.
   const [isMyTurn, setIsMyTurn] = useState(mode === "pve");
   const [leaderboard, setLeaderboard] = useState<
-    { name: string; score: number }[]
+    { name: string; score: number; board?: number[] }[]
   >([]);
+  const [opponentBoard, setOpponentBoard] = useState<number[]>([]);
+  const [viewingOpponent, setViewingOpponent] = useState(false);
+
+  // Calculate winning lines for opponent board since useGameLogic is bound to my board
+  const opponentWinningLines = useMemo(() => {
+    if (!viewingOpponent || opponentBoard.length === 0) return [];
+    const lines: number[] = [];
+    WINNING_LINES.forEach((line, index) => {
+      const isLineComplete = line.every((idx) =>
+        selectedNumbers.has(opponentBoard[idx])
+      );
+      if (isLineComplete) lines.push(index);
+    });
+    return lines;
+  }, [viewingOpponent, opponentBoard, selectedNumbers]);
 
   const { playClick, playTurn, playLineComplete, playWin, playLose } =
     useGameSounds();
@@ -52,15 +67,19 @@ export function GameRoom() {
     isProcessingMove.current = false;
   }, [isMyTurn]);
 
-  // Computer Board State (moved up to use in AI hook)
-  const [computerBoard] = useState<number[]>(() => {
+  // Computer Board State (stable for session)
+  const computerBoard = useMemo(() => {
     if (mode === "pve") {
+      // Seed randomness or just standard random.
+      // For simplicity, random board is fine as long as invalidation doesn't happen unexpectedly.
       return Array.from({ length: 25 }, (_, i) => i + 1).sort(
         () => Math.random() - 0.5
       );
     }
     return [];
-  });
+    // Use empty dependency array to create ONCE on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { getNextMove } = useComputerAI(
     // @ts-ignore - router ensures valid difficulty string or we default
@@ -107,10 +126,10 @@ export function GameRoom() {
 
       if (!roomId) {
         setStatusMsg("Creating room...");
-        socket.emit("create_room", { playerName: myName });
+        socket.emit("create_room", { playerName: myName, board });
       } else {
         setStatusMsg(`Joining room ${roomId}...`);
-        socket.emit("join_room", { roomId, playerName: myName });
+        socket.emit("join_room", { roomId, playerName: myName, board });
       }
 
       socket.on("room_created", (id: string) => {
@@ -161,12 +180,24 @@ export function GameRoom() {
           leaderboard,
         }: {
           winner: string;
-          leaderboard?: { name: string; score: number }[];
+          leaderboard?: {
+            id?: string;
+            name: string;
+            score: number;
+            board?: number[];
+          }[];
         }) => {
           setGameState("ended");
           setGameResult(winner === socket.id ? "win" : "lose");
           setStatusMsg(winner === socket.id ? "You Won!" : "Opponent Won!");
-          if (leaderboard) setLeaderboard(leaderboard);
+          if (leaderboard) {
+            setLeaderboard(leaderboard);
+            const opponent = leaderboard.find((p) => p.id !== socket.id); // Assuming ID is passed now
+            // Fallback for PvE or if ID not present (should be added in server)
+            if (opponent && opponent.board) {
+              setOpponentBoard(opponent.board);
+            }
+          }
         }
       );
 
@@ -208,18 +239,32 @@ export function GameRoom() {
       setStatusMsg("BINGO! You Won!");
       if (mode === "pvp") {
         socket.emit("bingo_win", { roomId });
+      } else {
+        // PvE Win
+        setOpponentBoard(computerBoard); // Force set opponent board so we can view it
       }
     }
-  }, [isWinner, gameState, mode, roomId]);
+  }, [isWinner, gameState, mode, roomId, computerBoard]);
 
-  const makeComputerMove = () => {
+  const makeComputerMove = useCallback(() => {
     const pick = getNextMove();
     if (pick) {
       markNumber(pick);
       setIsMyTurn(true);
       setStatusMsg("Your Turn");
     }
-  };
+  }, [getNextMove, markNumber]);
+
+  // Trigger Computer Move when it's not my turn
+  useEffect(() => {
+    if (mode === "pve" && gameState === "playing" && !isMyTurn && !isWinner) {
+      setStatusMsg("Computer thinking...");
+      const timer = setTimeout(() => {
+        makeComputerMove();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [mode, gameState, isMyTurn, isWinner, makeComputerMove]);
 
   const handleCellClick = (num: number) => {
     if (gameState !== "playing") return;
@@ -250,10 +295,7 @@ export function GameRoom() {
     } else {
       // PvE Logic
       setIsMyTurn(false);
-      setStatusMsg("Computer thinking...");
-      setTimeout(() => {
-        makeComputerMove();
-      }, 1000);
+      // Computer move is now triggered by useEffect listening to !isMyTurn
     }
   };
 
@@ -271,6 +313,7 @@ export function GameRoom() {
       setGameState("ended");
       setGameResult("lose");
       setStatusMsg("Computer Won!");
+      setOpponentBoard(computerBoard); // Set for viewing
     }
   };
 
@@ -308,7 +351,9 @@ export function GameRoom() {
             )}
           </div>
         ) : (
-          <div className="text-xl font-bold text-pale-primary">{statusMsg}</div>
+          <div className="text-xl font-bold text-pale-primary">
+            {viewingOpponent ? `${opponentName}'s Board` : statusMsg}
+          </div>
         )}
 
         {mode === "pvp" && roomId && (
@@ -326,11 +371,11 @@ export function GameRoom() {
       <BingoTitle progress={bingoProgress} />
 
       <Board
-        board={board}
+        board={viewingOpponent ? opponentBoard : board}
         selectedNumbers={selectedNumbers}
         onCellClick={handleCellClick}
-        disabled={gameState !== "playing" || !isMyTurn}
-        winningLines={winningLines}
+        disabled={gameState !== "playing" || (!isMyTurn && !viewingOpponent)} // Disable if viewing opponent
+        winningLines={viewingOpponent ? opponentWinningLines : winningLines}
       />
 
       {gameState === "ended" && gameResult && (
@@ -338,6 +383,8 @@ export function GameRoom() {
           result={gameResult}
           onRestart={handleRestart}
           leaderboard={mode === "pvp" ? leaderboard : undefined}
+          onViewBoard={() => setViewingOpponent(!viewingOpponent)}
+          isViewingOpponent={viewingOpponent}
         />
       )}
     </div>

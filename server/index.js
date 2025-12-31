@@ -19,12 +19,12 @@ const rooms = new Map();
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    socket.on('create_room', ({ playerName }) => {
+    socket.on('create_room', ({ playerName, board }) => {
         const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
 
         const newRoom = {
             id: roomId,
-            players: [{ id: socket.id, name: playerName || 'Host', score: 0 }],
+            players: [{ id: socket.id, name: playerName || 'Host', score: 0, board: board || [] }],
             gameState: 'waiting',
             winner: null,
             readyPlayers: new Set()
@@ -44,6 +44,7 @@ io.on('connection', (socket) => {
         // but we will update client to always send object.
         const roomId = typeof data === 'string' ? data : data.roomId;
         const playerName = typeof data === 'string' ? 'Player' : (data.playerName || 'Guest');
+        const board = typeof data === 'string' ? [] : (data.board || []);
 
         if (rooms.has(roomId)) {
             const room = rooms.get(roomId);
@@ -73,7 +74,7 @@ io.on('connection', (socket) => {
                 socket.emit('player_joined', { playerCount: room.players.length });
                 console.log(`${playerName} (${socket.id}) re-joined room ${roomId}`);
             } else if (room.players.length < 2) { // Assuming max 2 players per room
-                const newPlayer = { id: socket.id, name: playerName, score: 0 };
+                const newPlayer = { id: socket.id, name: playerName, score: 0, board };
                 room.players.push(newPlayer);
                 socket.join(roomId);
                 io.to(roomId).emit('player_update', room.players);
@@ -86,7 +87,7 @@ io.on('connection', (socket) => {
             // Create new room if it doesn't exist
             const newRoom = {
                 id: roomId,
-                players: [{ id: socket.id, name: playerName, score: 0 }],
+                players: [{ id: socket.id, name: playerName, score: 0, board }],
                 gameState: 'waiting', // 'waiting', 'playing', 'finished'
                 winner: null,
                 readyPlayers: new Set()
@@ -143,7 +144,12 @@ io.on('connection', (socket) => {
 
                 io.to(roomId).emit('game_over', {
                     winner: socket.id,
-                    leaderboard: room.players.map(p => ({ name: p.name, score: p.score || 0 }))
+                    leaderboard: room.players.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        score: p.score || 0,
+                        board: p.board
+                    }))
                 });
             }
         }
@@ -163,7 +169,12 @@ io.on('connection', (socket) => {
 
             io.to(roomId).emit('game_over', {
                 winner: socket.id,
-                leaderboard: room.players.map(p => ({ name: p.name, score: p.score || 0 }))
+                leaderboard: room.players.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    score: p.score || 0,
+                    board: p.board
+                }))
             });
         }
     });
