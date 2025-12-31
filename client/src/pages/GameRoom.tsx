@@ -66,7 +66,8 @@ export function GameRoom() {
     // @ts-ignore - router ensures valid difficulty string or we default
     difficulty || "easy",
     computerBoard,
-    selectedNumbers
+    selectedNumbers,
+    board // Pass Player Board for Defensive AI
   );
 
   // Play turn sound when it becomes my turn

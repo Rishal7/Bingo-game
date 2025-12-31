@@ -6,7 +6,8 @@ export type Difficulty = "easy" | "medium" | "hard";
 export function useComputerAI(
   difficulty: Difficulty,
   computerBoard: number[],
-  selectedNumbers: Set<number>
+  selectedNumbers: Set<number>,
+  playerBoard: number[] = []
 ) {
   const getNextMove = useCallback(() => {
     const allNumbers = Array.from({ length: 25 }, (_, i) => i + 1);
@@ -22,39 +23,71 @@ export function useComputerAI(
     }
 
     // Heuristics for Medium/Hard
-    // We want to pick a number that helps the computer complete lines.
-
-    // Calculate "value" of each available number for the Computer
-    const numberScores = availableNumbers.map((num) => {
+    const calculateScore = (
+      board: number[],
+      num: number,
+      selected: Set<number>
+    ) => {
       let score = 0;
-
       // Simulate selecting this number
-      const hypotheticalSelected = new Set(selectedNumbers);
+      const hypotheticalSelected = new Set(selected);
       hypotheticalSelected.add(num);
 
       // Check how many lines this number helps progress
       for (const line of WINNING_LINES) {
-        // Get numbers in this line from computer board
-        const lineNumbers = line.map((idx) => computerBoard[idx]);
+        // Get numbers in this line from board
+        const lineNumbers = line.map((idx) => board[idx]);
 
         // Count how many are already selected
         const alreadySelectedCount = lineNumbers.filter((n) =>
-          selectedNumbers.has(n)
+          selected.has(n)
         ).length;
 
-        // Check if OUR number is in this line
+        // Check if THE number is in this line
         if (lineNumbers.includes(num)) {
           // If the line is now complete (4 previously + 1 now = 5), massive bonus
           if (alreadySelectedCount === 4) {
-            score += 100;
+            score += 1000; // Big bonus for completing a line
           } else {
-            // Otherwise, give points based on how close the line is to completion
-            // The closer to completion, the more valuable handling it is
-            score += (alreadySelectedCount + 1) * 2;
+            // Points for progressing lines
+            score += (alreadySelectedCount + 1) * 10;
           }
         }
       }
-      return { num, score };
+      return score;
+    };
+
+    // Calculate "Net Value" of each available number
+    const numberScores = availableNumbers.map((num) => {
+      // 1. How much does this help the Computer?
+      const aiScore = calculateScore(computerBoard, num, selectedNumbers);
+
+      // 2. How much does this help the Player? (Defense)
+      let playerScore = 0;
+      if (difficulty === "hard" && playerBoard.length > 0) {
+        playerScore = calculateScore(playerBoard, num, selectedNumbers);
+      }
+
+      // 3. Net Score
+      // In Medium, we mostly ignore player score (or simplistic).
+      // In Hard, we heavily penalize helping the player.
+
+      let netScore = aiScore;
+      if (difficulty === "hard") {
+        // If this move gives player a line, MASSIVE penalty, unless it also gives AI a line
+        // If aiScore >= 1000 (AI wins/lines), we don't care about player score as much (race condition)
+        // But if we are just building, avoided giving player lines.
+
+        if (playerScore >= 1000 && aiScore < 1000) {
+          // Player wins/gets line, but we don't -> AVOID AT ALL COSTS
+          netScore -= 5000;
+        } else {
+          // General penalty for helping player
+          netScore -= playerScore * 1.5;
+        }
+      }
+
+      return { num, score: netScore, aiScore };
     });
 
     // Sort by score descending
@@ -62,7 +95,8 @@ export function useComputerAI(
 
     // MEDIUM: Mix of best moves and random to be imperfect
     if (difficulty === "medium") {
-      // 60% chance to pick from top 3 best moves, 40% random
+      // 60% chance to pick from top 3 best moves (based on AI score primarily), 40% random
+      // Note: We used netScore above which is same as aiScore for medium.
       if (Math.random() > 0.4) {
         const candidates = numberScores.slice(0, 3);
         const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -74,25 +108,20 @@ export function useComputerAI(
       }
     }
 
-    // HARD: Always pick the best move, or top 2 if tied
+    // HARD: Ruthless
     if (difficulty === "hard") {
-      // 90% chance to play optimal, 10% random (human error simulation)
-      if (Math.random() > 0.1) {
-        return numberScores[0].num;
-      } else {
-        // Pick from top 5 to still be good but slightly less predictable?
-        // Or just pure random for the "mistake"
-        const mistakeCandidates = numberScores.slice(0, 5);
-        return mistakeCandidates[
-          Math.floor(Math.random() * mistakeCandidates.length)
-        ].num;
-      }
+      // Always pick the absolute best Net Score.
+      // If there's a tie, random between them.
+      const bestScore = numberScores[0].score;
+      const bestMoves = numberScores.filter((n) => n.score === bestScore);
+
+      return bestMoves[Math.floor(Math.random() * bestMoves.length)].num;
     }
 
     return availableNumbers[
       Math.floor(Math.random() * availableNumbers.length)
     ];
-  }, [difficulty, computerBoard, selectedNumbers]);
+  }, [difficulty, computerBoard, selectedNumbers, playerBoard]);
 
   return { getNextMove };
 }
