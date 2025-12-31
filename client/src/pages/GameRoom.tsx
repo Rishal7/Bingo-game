@@ -45,6 +45,12 @@ export function GameRoom() {
   const { playClick, playTurn, playLineComplete, playWin, playLose } =
     useGameSounds();
   const prevProgressLen = useRef(0);
+  const isProcessingMove = useRef(false);
+
+  // Reset processing flag when turn changes
+  useEffect(() => {
+    isProcessingMove.current = false;
+  }, [isMyTurn]);
 
   // Computer Board State (moved up to use in AI hook)
   const [computerBoard] = useState<number[]>(() => {
@@ -217,7 +223,10 @@ export function GameRoom() {
   const handleCellClick = (num: number) => {
     if (gameState !== "playing") return;
     if (selectedNumbers.has(num)) return;
-    if (!isMyTurn && mode === "pvp") return;
+    if (!isMyTurn) return;
+    if (isProcessingMove.current) return;
+
+    isProcessingMove.current = true; // Block immediate subsequent clicks
 
     playClick();
     markNumber(num);
@@ -283,16 +292,18 @@ export function GameRoom() {
     <div className="flex flex-col items-center gap-6 p-4 max-w-lg mx-auto relative min-h-[80vh]">
       <div className="flex justify-between w-full items-center">
         {gameState === "playing" ? (
-          <div className="flex items-center gap-2">
-            <span
-              className={`text-lg font-bold ${
-                isMyTurn ? "text-pale-primary" : "text-gray-400"
-              }`}
-            >
+          <div
+            className={`flex items-center gap-3 px-4 py-2 rounded-full font-bold shadow-sm transition-all ${
+              isMyTurn
+                ? "bg-pale-primary text-white scale-105 shadow-md"
+                : "bg-gray-200 text-gray-500"
+            }`}
+          >
+            <span className="text-sm sm:text-base">
               {isMyTurn ? "Your Turn" : `${opponentName}'s Turn`}
             </span>
             {isMyTurn && (
-              <div className="w-2 h-2 bg-pale-primary rounded-full animate-pulse" />
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
             )}
           </div>
         ) : (
@@ -317,7 +328,7 @@ export function GameRoom() {
         board={board}
         selectedNumbers={selectedNumbers}
         onCellClick={handleCellClick}
-        disabled={gameState !== "playing" || (!isMyTurn && mode === "pvp")}
+        disabled={gameState !== "playing" || !isMyTurn}
         winningLines={winningLines}
       />
 
