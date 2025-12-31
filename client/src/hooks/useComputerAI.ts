@@ -6,8 +6,7 @@ export type Difficulty = "easy" | "medium" | "hard";
 export function useComputerAI(
   difficulty: Difficulty,
   computerBoard: number[],
-  selectedNumbers: Set<number>,
-  playerBoard: number[] = []
+  selectedNumbers: Set<number>
 ) {
   const getNextMove = useCallback(() => {
     const allNumbers = Array.from({ length: 25 }, (_, i) => i + 1);
@@ -62,32 +61,10 @@ export function useComputerAI(
       // 1. How much does this help the Computer?
       const aiScore = calculateScore(computerBoard, num, selectedNumbers);
 
-      // 2. How much does this help the Player? (Defense)
-      let playerScore = 0;
-      if (difficulty === "hard" && playerBoard.length > 0) {
-        playerScore = calculateScore(playerBoard, num, selectedNumbers);
-      }
+      // FAIR PLAY: We no longer look at the player's board.
+      // The AI is purely offensive/optimizing its own win.
 
-      // 3. Net Score
-      // In Medium, we mostly ignore player score (or simplistic).
-      // In Hard, we heavily penalize helping the player.
-
-      let netScore = aiScore;
-      if (difficulty === "hard") {
-        // If this move gives player a line, MASSIVE penalty, unless it also gives AI a line
-        // If aiScore >= 1000 (AI wins/lines), we don't care about player score as much (race condition)
-        // But if we are just building, avoided giving player lines.
-
-        if (playerScore >= 1000 && aiScore < 1000) {
-          // Player wins/gets line, but we don't -> AVOID AT ALL COSTS
-          netScore -= 5000;
-        } else {
-          // General penalty for helping player
-          netScore -= playerScore * 1.5;
-        }
-      }
-
-      return { num, score: netScore, aiScore };
+      return { num, score: aiScore, aiScore };
     });
 
     // Sort by score descending
@@ -96,7 +73,6 @@ export function useComputerAI(
     // MEDIUM: Mix of best moves and random to be imperfect
     if (difficulty === "medium") {
       // 60% chance to pick from top 3 best moves (based on AI score primarily), 40% random
-      // Note: We used netScore above which is same as aiScore for medium.
       if (Math.random() > 0.4) {
         const candidates = numberScores.slice(0, 3);
         const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -108,20 +84,25 @@ export function useComputerAI(
       }
     }
 
-    // HARD: Ruthless
+    // HARD: Strong but human (Blind to player)
     if (difficulty === "hard") {
-      // Always pick the absolute best Net Score.
-      // If there's a tie, random between them.
-      const bestScore = numberScores[0].score;
-      const bestMoves = numberScores.filter((n) => n.score === bestScore);
-
-      return bestMoves[Math.floor(Math.random() * bestMoves.length)].num;
+      // 85% chance to play optimal
+      if (Math.random() > 0.15) {
+        const bestScore = numberScores[0].score;
+        const bestMoves = numberScores.filter((n) => n.score === bestScore);
+        return bestMoves[Math.floor(Math.random() * bestMoves.length)].num;
+      } else {
+        // 15% chance to slip up slightly (pick from top 3)
+        const candidates = numberScores.slice(0, 3);
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        return pick.num;
+      }
     }
 
     return availableNumbers[
       Math.floor(Math.random() * availableNumbers.length)
     ];
-  }, [difficulty, computerBoard, selectedNumbers, playerBoard]);
+  }, [difficulty, computerBoard, selectedNumbers]);
 
   return { getNextMove };
 }
