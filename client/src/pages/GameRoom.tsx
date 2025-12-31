@@ -24,6 +24,7 @@ export function GameRoom() {
     bingoProgress,
     winningLines,
     isWinner,
+    checkWin,
   } = useGameLogic(initialBoard);
 
   const [gameState, setGameState] = useState<"waiting" | "playing" | "ended">(
@@ -195,7 +196,19 @@ export function GameRoom() {
 
     if (mode === "pvp") {
       setIsMyTurn(false);
-      socket.emit("make_move", { roomId, number: num });
+
+      const nextSelected = new Set(selectedNumbers);
+      nextSelected.add(num);
+      const { lines } = checkWin(nextSelected); // Assuming checkWin is returned from useGameLogic
+      const win = lines >= 5;
+
+      if (win) {
+        setGameState("ended");
+        setGameResult("win");
+        setStatusMsg("BINGO! You Won!");
+      }
+
+      socket.emit("make_move", { roomId, number: num, win });
     } else {
       // PvE Logic
       setIsMyTurn(false);

@@ -75,5 +75,6 @@ export function useGameLogic(initialBoard: number[] = []) {
     bingoProgress,
     winningLines,
     isWinner,
+    checkWin,
   };
 }

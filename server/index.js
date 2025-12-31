@@ -48,6 +48,13 @@ io.on('connection', (socket) => {
         if (rooms.has(roomId)) {
             const room = rooms.get(roomId);
 
+            // Validating if the game was finished, if so reset needed variables to play again
+            if (room.gameState === 'finished') {
+                room.gameState = 'waiting';
+                room.winner = null;
+                room.readyPlayers = new Set();
+            }
+
             // Initialize score if not present (backward compat or new logic)
             // This logic should ideally be applied when a room is created or a player joins.
             // Moving it here to ensure scores are initialized for existing players.
@@ -116,11 +123,30 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('make_move', ({ roomId, number }) => {
-        console.log(`Move in ${roomId}: ${number}`);
+    socket.on('make_move', ({ roomId, number, win }) => {
+        console.log(`Move in ${roomId}: ${number} (Win claim: ${win})`);
         // Broadcast move to everyone in room (including sender, or just opponent)
         // Using io.to(roomId) sends to everyone
         io.to(roomId).emit('number_selected', { number, playerId: socket.id });
+
+        if (win) {
+            const room = rooms.get(roomId);
+            if (room && !room.winner) {
+                room.winner = socket.id;
+                room.gameState = 'finished';
+
+                // Increment score
+                const winnerPlayer = room.players.find(p => p.id === socket.id);
+                if (winnerPlayer) {
+                    winnerPlayer.score = (winnerPlayer.score || 0) + 1;
+                }
+
+                io.to(roomId).emit('game_over', {
+                    winner: socket.id,
+                    leaderboard: room.players.map(p => ({ name: p.name, score: p.score || 0 }))
+                });
+            }
+        }
     });
 
     socket.on('bingo_win', ({ roomId }) => {

@@ -64,7 +64,9 @@ export function Lobby() {
   const [roomId, setRoomId] = useState("");
   const [joinInput, setJoinInput] = useState("");
   const [players, setPlayers] = useState<{ id: string; name: string }[]>([]);
-  const [playerName, setPlayerName] = useState("");
+  const [playerName, setPlayerName] = useState(
+    () => localStorage.getItem("bingo_playerName") || ""
+  );
   const [isHost, setIsHost] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -109,17 +111,23 @@ export function Lobby() {
     };
   }, [navigate, roomId, joinInput, playerName]);
 
+  const getOrGenerateName = () => {
+    if (playerName.trim()) return playerName;
+    const newName = `Guest ${Math.floor(Math.random() * 9000) + 1000}`;
+    setPlayerName(newName);
+    localStorage.setItem("bingo_playerName", newName);
+    return newName;
+  };
+
   const handleCreate = () => {
-    if (!playerName.trim()) {
-      setErrorMsg("Please enter your name");
-      return;
-    }
-    socket.emit("create_room", { playerName });
+    const finalName = getOrGenerateName();
+    socket.emit("create_room", { playerName: finalName });
   };
 
   const handleJoin = () => {
-    if (!joinInput || !playerName.trim()) return;
-    socket.emit("join_room", { roomId: joinInput, playerName });
+    if (!joinInput.trim()) return;
+    const finalName = getOrGenerateName();
+    socket.emit("join_room", { roomId: joinInput, playerName: finalName });
     setRoomId(joinInput);
     setIsHost(false);
     setView("waiting");
@@ -129,10 +137,24 @@ export function Lobby() {
     socket.emit("start_game", roomId);
   };
 
+  const handleBack = () => {
+    if (view === "waiting") {
+      socket.disconnect();
+      setRoomId("");
+      setJoinInput("");
+      setPlayers([]);
+      setIsHost(false);
+      setView("menu");
+      socket.connect();
+    } else {
+      navigate({ to: "/" });
+    }
+  };
+
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] w-full max-w-sm sm:max-w-md mx-auto p-4 gap-6">
       <button
-        onClick={() => navigate({ to: "/" })}
+        onClick={handleBack}
         className="self-start text-pale-text/60 hover:text-pale-primary font-bold transition-colors flex items-center gap-2 mb-4"
       >
         ← Back
@@ -144,60 +166,62 @@ export function Lobby() {
             PvP Lobby
           </h2>
 
-          <input
-            value={playerName}
-            onChange={(e) => {
-              setPlayerName(e.target.value);
-              setErrorMsg("");
-            }}
-            placeholder="Enter Your Name"
-            className="w-full p-4 text-center text-xl border-2 border-pale-primary/30 rounded-xl focus:border-pale-primary focus:outline-none bg-white mb-2"
-          />
-          {errorMsg && !playerName && (
-            <p className="text-red-500 text-center text-sm">{errorMsg}</p>
-          )}
+          <div className="w-full mb-8">
+            <label className="block text-left text-pale-text/60 font-bold uppercase tracking-wider text-xs ml-1 mb-2">
+              Who are you?
+            </label>
+            <input
+              value={playerName}
+              onChange={(e) => {
+                const val = e.target.value;
+                setPlayerName(val);
+                localStorage.setItem("bingo_playerName", val);
+                setErrorMsg("");
+              }}
+              placeholder="Enter Your Name"
+              className="w-full p-4 text-center text-xl border-2 border-pale-primary/30 rounded-xl focus:border-pale-primary focus:outline-none bg-white shadow-sm transition-all focus:shadow-md"
+            />
+          </div>
 
           <SoundButton
             onClick={handleCreate}
-            disabled={!playerName.trim()}
-            className="w-full py-5 text-xl font-bold bg-pale-primary text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all disabled:opacity-50 disabled:hover:scale-100"
+            className="w-full py-4 text-xl font-bold bg-pale-primary text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all disabled:opacity-50 disabled:hover:scale-100"
           >
             Create Room
           </SoundButton>
-          <SoundButton
-            onClick={() => {
-              if (!playerName.trim()) {
-                setErrorMsg("Please enter your name first");
-                return;
-              }
-              setView("join-input");
-            }}
-            disabled={!playerName.trim()}
-            className="w-full py-5 text-xl font-bold bg-pale-secondary text-pale-text rounded-xl shadow-md hover:bg-pale-accent transition-all disabled:opacity-50"
-          >
-            Join Room
-          </SoundButton>
-        </div>
-      )}
 
-      {view === "join-input" && (
-        <div className="flex flex-col gap-4 w-full animate-in fade-in zoom-in duration-300">
-          <h2 className="text-2xl font-bold text-pale-text text-center">
-            Enter Room Code
-          </h2>
-          <input
-            value={joinInput}
-            onChange={(e) => setJoinInput(e.target.value)}
-            placeholder="e.g. room-123"
-            className="w-full p-4 text-center text-xl border-2 border-pale-primary/30 rounded-xl focus:border-pale-primary focus:outline-none bg-white"
-          />
-          {errorMsg && <p className="text-red-500 text-center">{errorMsg}</p>}
-          <SoundButton
-            onClick={handleJoin}
-            className="w-full py-4 text-xl font-bold bg-pale-primary text-white rounded-xl shadow-lg mt-2"
-          >
-            Join
-          </SoundButton>
+          <div className="flex items-center gap-3 w-full my-2 opacity-50">
+            <div className="h-0.5 bg-gray-300 flex-1 rounded-full" />
+            <span className="text-gray-400 text-sm font-bold uppercase tracking-wider">
+              OR
+            </span>
+            <div className="h-0.5 bg-gray-300 flex-1 rounded-full" />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <input
+              value={joinInput}
+              onChange={(e) => {
+                setJoinInput(e.target.value);
+                setErrorMsg("");
+              }}
+              placeholder="Enter Room Code"
+              className="w-full p-4 text-center text-xl border-2 border-pale-primary/30 rounded-xl focus:border-pale-primary focus:outline-none bg-white"
+            />
+            <SoundButton
+              onClick={handleJoin}
+              disabled={!playerName.trim() || !joinInput.trim()}
+              className="w-full py-4 text-xl font-bold bg-pale-secondary text-pale-text rounded-xl shadow-md hover:bg-pale-accent transition-all disabled:opacity-50"
+            >
+              Join Room
+            </SoundButton>
+          </div>
+
+          {errorMsg && (
+            <p className="text-red-500 text-center text-sm font-medium animate-pulse">
+              {errorMsg}
+            </p>
+          )}
         </div>
       )}
 
