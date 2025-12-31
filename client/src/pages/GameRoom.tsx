@@ -6,6 +6,7 @@ import { socket } from "../socket";
 import { GameOver } from "../components/GameOver";
 import { useGameSounds } from "../hooks/useSoundEffects";
 import { BingoTitle } from "../components/BingoTitle";
+import { useComputerAI } from "../hooks/useComputerAI";
 
 export function GameRoom() {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ export function GameRoom() {
     board: boardStr,
     roomId: initialRoomId,
     playerName,
+    difficulty,
   } = useSearch({ from: "/play" });
   const initialBoard = boardStr ? boardStr.split(",").map(Number) : [];
 
@@ -43,6 +45,23 @@ export function GameRoom() {
   const { playClick, playTurn, playLineComplete, playWin, playLose } =
     useGameSounds();
   const prevProgressLen = useRef(0);
+
+  // Computer Board State (moved up to use in AI hook)
+  const [computerBoard] = useState<number[]>(() => {
+    if (mode === "pve") {
+      return Array.from({ length: 25 }, (_, i) => i + 1).sort(
+        () => Math.random() - 0.5
+      );
+    }
+    return [];
+  });
+
+  const { getNextMove } = useComputerAI(
+    // @ts-ignore - router ensures valid difficulty string or we default
+    difficulty || "easy",
+    computerBoard,
+    selectedNumbers
+  );
 
   // Play turn sound when it becomes my turn
   useEffect(() => {
@@ -186,6 +205,15 @@ export function GameRoom() {
     }
   }, [isWinner, gameState, mode, roomId]);
 
+  const makeComputerMove = () => {
+    const pick = getNextMove();
+    if (pick) {
+      markNumber(pick);
+      setIsMyTurn(true);
+      setStatusMsg("Your Turn");
+    }
+  };
+
   const handleCellClick = (num: number) => {
     if (gameState !== "playing") return;
     if (selectedNumbers.has(num)) return;
@@ -218,27 +246,6 @@ export function GameRoom() {
       }, 1000);
     }
   };
-
-  const makeComputerMove = () => {
-    const allNumbers = Array.from({ length: 25 }, (_, i) => i + 1);
-    const candidates = allNumbers.filter((n) => !selectedNumbers.has(n));
-
-    if (candidates.length > 0) {
-      const pick = candidates[Math.floor(Math.random() * candidates.length)];
-      markNumber(pick);
-      setIsMyTurn(true);
-      setStatusMsg("Your Turn");
-    }
-  };
-
-  const [computerBoard] = useState<number[]>(() => {
-    if (mode === "pve") {
-      return Array.from({ length: 25 }, (_, i) => i + 1).sort(
-        () => Math.random() - 0.5
-      );
-    }
-    return [];
-  });
 
   const checkComputerWin = () => {
     if (mode !== "pve" || gameState === "ended") return;

@@ -17,6 +17,16 @@ export function GameSetup() {
   const [board, setBoard] = useState<number[]>(Array(25).fill(0));
   const [nextNumber, setNextNumber] = useState(1);
   const [isWaiting, setIsWaiting] = useState(false);
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">(
+    () => {
+      return (
+        (localStorage.getItem("bingo_difficulty") as
+          | "easy"
+          | "medium"
+          | "hard") || "easy"
+      );
+    }
+  );
 
   useEffect(() => {
     if (mode === "pvp") {
@@ -25,7 +35,13 @@ export function GameSetup() {
       const onMatchStart = () => {
         navigate({
           to: "/play",
-          search: { mode, board: board.join(","), roomId, playerName },
+          search: {
+            mode,
+            board: board.join(","),
+            roomId,
+            playerName,
+            difficulty: "easy",
+          },
         });
       };
 
@@ -75,7 +91,13 @@ export function GameSetup() {
       // PvE - Instant start
       navigate({
         to: "/play",
-        search: { mode, board: board.join(","), roomId, playerName },
+        search: {
+          mode,
+          board: board.join(","),
+          roomId,
+          playerName,
+          difficulty,
+        },
       });
     }
   };
@@ -108,9 +130,7 @@ export function GameSetup() {
         <div className="text-center">
           <h2 className="text-3xl font-bold text-pale-text">Setup Board</h2>
           <p className="text-sm text-gray-500">
-            {nextNumber <= 25
-              ? "Click cells to place numbers"
-              : "Board Ready!"}
+            {nextNumber <= 25 ? "Click cells to place numbers" : "Board Ready!"}
           </p>
         </div>
 
@@ -139,6 +159,32 @@ export function GameSetup() {
               Clear
             </SoundButton>
           </div>
+
+          {mode === "pve" && (
+            <div className="w-full bg-pale-secondary/10 py-3 rounded-xl">
+              <label className="block text-left text-pale-text/60 font-bold uppercase tracking-wider text-xs ml-1 mb-2">
+                Difficulty
+              </label>
+              <div className="flex gap-2">
+                {(["easy", "medium", "hard"] as const).map((d) => (
+                  <SoundButton
+                    key={d}
+                    onClick={() => {
+                      setDifficulty(d);
+                      localStorage.setItem("bingo_difficulty", d);
+                    }}
+                    className={`flex-1 py-2 text-sm font-bold capitalize rounded-lg transition-all border-2 ${
+                      difficulty === d
+                        ? "bg-pale-primary text-white border-pale-primary shadow-md"
+                        : "bg-white text-pale-text border-transparent hover:bg-white/50"
+                    }`}
+                  >
+                    {d}
+                  </SoundButton>
+                ))}
+              </div>
+            </div>
+          )}
 
           <SoundButton
             onClick={handleStart}

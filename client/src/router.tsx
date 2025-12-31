@@ -124,6 +124,7 @@ const playRoute = createRoute({
       board: (search.board as string) || "",
       roomId: (search.roomId as string) || undefined,
       playerName: (search.playerName as string) || undefined,
+      difficulty: (search.difficulty as "easy" | "medium" | "hard") || "easy",
     };
   },
 });
