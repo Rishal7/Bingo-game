@@ -6,7 +6,7 @@ import {
   Outlet,
   Link,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/router-devtools";
+// import { TanStackRouterDevtools } from "@tanstack/router-devtools";
 
 const Home = lazy(() =>
   import("./pages/Home").then((m) => ({ default: m.Home }))
@@ -87,7 +87,7 @@ const LayoutContent = () => {
       >
         <Outlet />
       </Suspense>
-      <TanStackRouterDevtools position="bottom-right" />
+      {/* <TanStackRouterDevtools position="bottom-right" /> */}
     </div>
   );
 };

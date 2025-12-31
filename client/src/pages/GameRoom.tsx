@@ -367,7 +367,13 @@ export function GameRoom() {
         )}
       </div>
 
-      <BingoTitle progress={bingoProgress} />
+      <BingoTitle
+        progress={
+          viewingOpponent
+            ? "BINGO".slice(0, Math.min(opponentWinningLines.length, 5))
+            : bingoProgress
+        }
+      />
 
       <Board
         board={viewingOpponent ? opponentBoard : board}
