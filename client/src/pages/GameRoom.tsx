@@ -43,6 +43,8 @@ export function GameRoom() {
   >([]);
   const [opponentBoard, setOpponentBoard] = useState<number[]>([]);
   const [viewingOpponent, setViewingOpponent] = useState(false);
+  const [isOpponentLeft, setIsOpponentLeft] = useState(false);
+  const [isRoomClosed, setIsRoomClosed] = useState(false);
 
   // Calculate winning lines for opponent board since useGameLogic is bound to my board
   const opponentWinningLines = useMemo(() => {
@@ -153,13 +155,32 @@ export function GameRoom() {
         }
       );
 
-      socket.on("player_joined", () => {
-        // Received when we successfully join (or opponent joins)
-        setGameState("playing");
-      });
+      socket.on(
+        "player_joined",
+        (data: {
+          playerCount: number;
+          currentTurn?: string;
+          gameState?: "waiting" | "playing" | "ended";
+        }) => {
+          // Received when we successfully join (or opponent joins)
+          if (data.gameState) setGameState(data.gameState);
+          else setGameState("playing"); // Fallback
+
+          if (data.currentTurn) {
+            const isTurn = data.currentTurn === socket.id;
+            setIsMyTurn(isTurn);
+            setStatusMsg(isTurn ? "Your Turn" : "Opponent's Turn");
+          }
+        }
+      );
 
       socket.on("game_state_change", () => {
         setGameState("playing");
+      });
+
+      socket.on("start_turn", ({ playerId }: { playerId: string }) => {
+        setIsMyTurn(playerId === socket.id);
+        setStatusMsg(playerId === socket.id ? "Your Turn" : "Opponent's Turn");
       });
 
       socket.on(
@@ -204,31 +225,55 @@ export function GameRoom() {
         setStatusMsg(`Error: ${err}`);
       });
 
+      socket.on("room_closed", () => {
+        setIsRoomClosed(true);
+        // Force navigate after delay or let user click exit?
+        // Current logic: Prompt user in GameOver.
+        // But TS error on `navigate` elsewhere (handleExit).
+        // I will keep setIsRoomClosed logic here.
+      });
+
+      socket.on("player_left", () => {
+        // Direct navigation for Host when Guest leaves
+        navigate({
+          to: "/lobby",
+          search: {
+            mode: "pvp",
+            roomId,
+            playerName: myName,
+            alert: "opponent_left",
+          },
+        });
+      });
+
       return () => {
         socket.off("room_created");
         socket.off("player_update");
         socket.off("player_joined");
+        socket.off("start_turn");
         socket.off("number_selected");
         socket.off("game_over");
+        socket.off("room_closed");
+        socket.off("player_left");
       };
     } else {
       // PvE
       setGameState("playing");
       setStatusMsg("Your Turn");
     }
-  }, [mode, roomId, markNumber, myName]);
+  }, [mode, roomId, markNumber, myName, board]);
 
   // Logic to determine initial turn
-  useEffect(() => {
-    if (mode === "pvp" && players.length > 0 && gameState === "playing") {
-      if (players.length >= 1) {
-        const isHost = players[0].id === socket.id;
-        if (selectedNumbers.size === 0) {
-          setIsMyTurn(isHost);
-        }
-      }
-    }
-  }, [players, mode, socket.id, selectedNumbers.size, gameState]);
+  // useEffect(() => {
+  //   if (mode === "pvp" && players.length > 0 && gameState === "playing") {
+  //     if (players.length >= 1) {
+  //       const isHost = players[0].id === socket.id;
+  //       if (selectedNumbers.size === 0) {
+  //         setIsMyTurn(isHost);
+  //       }
+  //     }
+  //   }
+  // }, [players, mode, socket.id, selectedNumbers.size, gameState]);
 
   // Win Check logic
   useEffect(() => {
@@ -331,6 +376,21 @@ export function GameRoom() {
     });
   };
 
+  const isPlayerHost = players.length > 0 && players[0].id === socket.id;
+
+  const handleExit = () => {
+    if (mode === "pvp") {
+      if (isPlayerHost) {
+        // Host closing the room
+        socket.emit("close_room", roomId);
+      } else {
+        // Guest leaving
+        socket.emit("leave_room", roomId);
+      }
+    }
+    navigate({ to: "/lobby", search: {} });
+  };
+
   return (
     <div className="flex flex-col items-center gap-6 p-4 max-w-lg mx-auto relative min-h-[80vh]">
       <div className="flex justify-between w-full items-center">
@@ -390,6 +450,9 @@ export function GameRoom() {
           leaderboard={mode === "pvp" ? leaderboard : undefined}
           onViewBoard={() => setViewingOpponent(!viewingOpponent)}
           isViewingOpponent={viewingOpponent}
+          onExit={handleExit}
+          isRoomClosed={isRoomClosed}
+          isOpponentLeft={isOpponentLeft}
         />
       )}
     </div>

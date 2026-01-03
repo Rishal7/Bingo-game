@@ -11,6 +11,9 @@ interface GameOverProps {
   leaderboard?: { name: string; score: number }[];
   onViewBoard?: () => void;
   isViewingOpponent?: boolean;
+  onExit?: () => void;
+  isRoomClosed?: boolean;
+  isOpponentLeft?: boolean;
 }
 
 export function GameOver({
@@ -19,18 +22,21 @@ export function GameOver({
   leaderboard,
   onViewBoard,
   isViewingOpponent,
+  onExit,
+  isRoomClosed,
+  isOpponentLeft,
 }: GameOverProps) {
   const { width, height } = useWindowSize();
   const [showConfetti, setShowConfetti] = useState(true);
 
   useEffect(() => {
-    if (result === "lose") {
+    if (result === "lose" || isRoomClosed) {
       setShowConfetti(false);
     } else {
       const timer = setTimeout(() => setShowConfetti(false), 5000);
       return () => clearTimeout(timer);
     }
-  }, [result]);
+  }, [result, isRoomClosed]);
 
   if (isViewingOpponent && onViewBoard) {
     return (
@@ -47,7 +53,7 @@ export function GameOver({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      {result === "win" && showConfetti && (
+      {result === "win" && showConfetti && !isRoomClosed && (
         <ReactConfetti
           width={width}
           height={height}
@@ -64,25 +70,41 @@ export function GameOver({
       >
         <div
           className={`absolute top-0 left-0 w-full h-2 ${
-            result === "win" ? "bg-green-500" : "bg-red-500"
+            isRoomClosed
+              ? "bg-gray-400"
+              : result === "win"
+              ? "bg-green-500"
+              : "bg-red-500"
           }`}
         />
 
         <h2
           className={`text-4xl font-black mb-2 ${
-            result === "win" ? "text-green-600" : "text-red-500"
+            isRoomClosed
+              ? "text-gray-700"
+              : result === "win"
+              ? "text-green-600"
+              : "text-red-500"
           }`}
         >
-          {result === "win" ? "YOU WON!" : "GAME OVER"}
+          {isRoomClosed
+            ? "ROOM CLOSED"
+            : result === "win"
+            ? "YOU WON!"
+            : "GAME OVER"}
         </h2>
 
         <p className="text-gray-500 mb-8 text-lg font-medium">
-          {result === "win"
+          {isRoomClosed
+            ? "The host has closed the room."
+            : isOpponentLeft
+            ? "Opponent has left the room."
+            : result === "win"
             ? "BINGO! You crushed it! 🎉"
             : "Better luck next time! 😅"}
         </p>
 
-        {leaderboard && leaderboard.length > 0 && (
+        {leaderboard && leaderboard.length > 0 && !isRoomClosed && (
           <div className="mb-6 bg-gray-50 rounded-xl p-4 text-left">
             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3">
               Leaderboard
@@ -108,14 +130,35 @@ export function GameOver({
           </div>
         )}
 
-        <SoundButton
-          onClick={onRestart}
-          className="w-full py-4 rounded-xl bg-pale-primary text-white font-bold text-lg shadow-lg shadow-pale-primary/30 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
-        >
-          Play Again
-        </SoundButton>
+        <div className="flex gap-3 w-full">
+          {!isRoomClosed && !isOpponentLeft && (
+            <SoundButton
+              onClick={onRestart}
+              className="flex-1 py-4 rounded-xl bg-pale-primary text-white font-bold text-lg shadow-lg shadow-pale-primary/30 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+            >
+              Play Again
+            </SoundButton>
+          )}
 
-        {onViewBoard && (
+          {onExit && (
+            <SoundButton
+              onClick={onExit}
+              className={`flex-1 py-4 rounded-xl font-bold text-lg transition-all ${
+                isRoomClosed || isOpponentLeft
+                  ? "bg-pale-primary text-white shadow-lg"
+                  : "bg-red-100 text-red-600 hover:bg-red-200"
+              }`}
+            >
+              {isRoomClosed
+                ? "Back to Lobby"
+                : isOpponentLeft
+                ? "Exit to Lobby"
+                : "Exit"}
+            </SoundButton>
+          )}
+        </div>
+
+        {onViewBoard && !isRoomClosed && (
           <button
             onClick={onViewBoard}
             className="w-full mt-3 py-3 rounded-xl bg-gray-100 text-gray-600 font-bold text-lg hover:bg-gray-200 transition-all"

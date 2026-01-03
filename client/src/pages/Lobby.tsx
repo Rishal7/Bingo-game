@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, getRouteApi } from "@tanstack/react-router";
 import { socket } from "../socket";
 import { SoundButton } from "../components/SoundButton";
+
+const lobbyRoute = getRouteApi("/lobby");
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -59,16 +61,26 @@ function CopyButton({ text }: { text: string }) {
 
 export function Lobby() {
   const navigate = useNavigate();
+  const search = lobbyRoute.useSearch();
+
   // State: 'menu' | 'join-input' | 'waiting'
-  const [view, setView] = useState<"menu" | "join-input" | "waiting">("menu");
-  const [roomId, setRoomId] = useState("");
+  const [view, setView] = useState<"menu" | "join-input" | "waiting">(
+    search.roomId ? "waiting" : "menu"
+  );
+  const [roomId, setRoomId] = useState(search.roomId || "");
   const [joinInput, setJoinInput] = useState("");
   const [players, setPlayers] = useState<{ id: string; name: string }[]>([]);
   const [playerName, setPlayerName] = useState(
     () => localStorage.getItem("bingo_playerName") || ""
   );
-  const [isHost, setIsHost] = useState(false);
+  const [isHost, setIsHost] = useState(!!search.roomId);
   const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    if (search.alert === "opponent_left") {
+      setErrorMsg("Opponent has left the game.");
+    }
+  }, [search.alert]);
 
   useEffect(() => {
     // Connect socket on mount

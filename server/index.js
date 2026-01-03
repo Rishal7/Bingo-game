@@ -68,17 +68,26 @@ io.on('connection', (socket) => {
             if (existingPlayer) {
                 // Update name if provided?
                 if (data.playerName) existingPlayer.name = data.playerName;
+                if (data.board && data.board.length > 0) existingPlayer.board = data.board;
                 io.to(roomId).emit('player_update', room.players);
 
                 // CRITICAL FIX: Tell the re-joining client we are good to go
-                socket.emit('player_joined', { playerCount: room.players.length });
+                socket.emit('player_joined', {
+                    playerCount: room.players.length,
+                    currentTurn: room.currentTurn,
+                    gameState: room.gameState
+                });
                 console.log(`${playerName} (${socket.id}) re-joined room ${roomId}`);
             } else if (room.players.length < 2) { // Assuming max 2 players per room
                 const newPlayer = { id: socket.id, name: playerName, score: 0, board };
                 room.players.push(newPlayer);
                 socket.join(roomId);
                 io.to(roomId).emit('player_update', room.players);
-                socket.emit('player_joined', { playerCount: room.players.length });
+                socket.emit('player_joined', {
+                    playerCount: room.players.length,
+                    currentTurn: room.currentTurn,
+                    gameState: room.gameState
+                });
                 console.log(`${playerName} (${socket.id}) joined room ${roomId}`);
             } else {
                 socket.emit('error', 'Room is full');
@@ -96,7 +105,11 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socket.emit('room_created', roomId); // Inform the creator
             io.to(roomId).emit('player_update', newRoom.players);
-            socket.emit('player_joined', { playerCount: newRoom.players.length });
+            socket.emit('player_joined', {
+                playerCount: newRoom.players.length,
+                currentTurn: newRoom.currentTurn, // Undefined initially, which is fine
+                gameState: newRoom.gameState
+            });
             console.log(`Room created: ${roomId} by ${playerName} (${socket.id})`);
         }
     });
@@ -113,11 +126,42 @@ io.on('connection', (socket) => {
             if (!room.readyPlayers) room.readyPlayers = new Set();
             room.readyPlayers.add(socket.id);
 
+            // Update board if provided (definitive source from Setup)
+            if (board && board.length > 0) {
+                const player = room.players.find(p => p.id === socket.id);
+                if (player) {
+                    player.board = board;
+                    console.log(`Updated board for ${player.name} in ${roomId}`);
+                }
+            }
+
             console.log(`Player ${socket.id} ready in ${roomId}. Total ready: ${room.readyPlayers.size}/${room.players.length}`);
 
             if (room.players.length === 2 && room.readyPlayers.size === 2) {
                 console.log(`All players ready in ${roomId}. Starting match.`);
+
+                // Determine who starts
+                // Default to host (index 0) if first game
+                let startPlayerId = room.players[0].id;
+
+                if (room.lastStarter) {
+                    // Find the other player
+                    const otherPlayer = room.players.find(p => p.id !== room.lastStarter);
+                    if (otherPlayer) {
+                        startPlayerId = otherPlayer.id;
+                    }
+                }
+
+                // Update tracker
+                room.lastStarter = startPlayerId;
+
+                // Set persistent game state
+                room.gameState = 'playing';
+                room.currentTurn = startPlayerId;
+
                 io.to(roomId).emit('match_start');
+                io.to(roomId).emit('start_turn', { playerId: startPlayerId });
+
                 // Reset ready players for next game
                 room.readyPlayers.clear();
             }
@@ -125,14 +169,23 @@ io.on('connection', (socket) => {
     });
 
     socket.on('make_move', ({ roomId, number, win }) => {
+        const room = rooms.get(roomId);
+        if (!room) return;
+
+        // Prevent moves if game is over
+        if (room.winner || room.gameState === 'finished') {
+            console.log(`Move ignored in ${roomId} (Game Over)`);
+            return;
+        }
+
         console.log(`Move in ${roomId}: ${number} (Win claim: ${win})`);
+
         // Broadcast move to everyone in room (including sender, or just opponent)
         // Using io.to(roomId) sends to everyone
         io.to(roomId).emit('number_selected', { number, playerId: socket.id });
 
         if (win) {
-            const room = rooms.get(roomId);
-            if (room && !room.winner) {
+            if (!room.winner) { // Double check
                 room.winner = socket.id;
                 room.gameState = 'finished';
 
@@ -176,6 +229,35 @@ io.on('connection', (socket) => {
                     board: p.board
                 }))
             });
+        }
+    });
+
+    socket.on('close_room', (roomId) => {
+        if (rooms.has(roomId)) {
+            io.to(roomId).emit('room_closed');
+            rooms.delete(roomId);
+            console.log(`Room ${roomId} closed by host ${socket.id}`);
+        }
+    });
+
+    socket.on('leave_room', (roomId) => {
+        const room = rooms.get(roomId);
+        if (room) {
+            const playerIndex = room.players.findIndex(p => p.id === socket.id);
+            if (playerIndex !== -1) {
+                room.players.splice(playerIndex, 1);
+                if (room.readyPlayers) room.readyPlayers.delete(socket.id);
+
+                io.to(roomId).emit('player_left', socket.id);
+                io.to(roomId).emit('player_update', room.players);
+                console.log(`Player ${socket.id} left room ${roomId} (manual exit)`);
+
+                socket.leave(roomId);
+
+                if (room.players.length === 0) {
+                    rooms.delete(roomId);
+                }
+            }
         }
     });
 

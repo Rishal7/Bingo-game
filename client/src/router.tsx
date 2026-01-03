@@ -133,6 +133,14 @@ const lobbyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/lobby",
   component: Lobby,
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      mode: (search.mode as "pve" | "pvp") || undefined,
+      roomId: (search.roomId as string) || undefined,
+      playerName: (search.playerName as string) || undefined,
+      alert: (search.alert as string) || undefined,
+    };
+  },
 });
 
 const routeTree = rootRoute.addChildren([
